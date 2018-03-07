@@ -1,0 +1,2 @@
+# Sensors
+MySensors Sensors
