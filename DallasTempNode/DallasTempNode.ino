@@ -27,7 +27,7 @@
 //v2.1 Anpassung auf API 2.0 von JH
 #define MY_RADIO_NRF24
 #define MY_DEBUG    // Enables debug messages in the serial log 
-#define MY_NODE_ID 42 // Sets a static id for a node
+#define MY_NODE_ID 24//54 // Sets a static id for a node
 #define MY_RF24_PA_LEVEL RF24_PA_MAX // Max tx power
 #include <MySensors.h>  
 #include <SPI.h>
@@ -71,8 +71,9 @@ void presentation(){
   numSensors = sensors.getDeviceCount();
 
   // Present all sensors to controller
-  for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) {   
-  present(i, S_TEMP);
+  for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) 
+  {   
+     present(i, S_TEMP);
   }
 }
 
@@ -88,21 +89,20 @@ void loop()
   //sleep(conversionTime);
 
   // Read temperatures and send them to controller 
-  for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) {
- 
-    // Fetch and round temperature to one decimal
-//    float temperature = static_cast<float>(static_cast<int>((getConfig().isMetric?sensors.getTempCByIndex(i):sensors.getTempFByIndex(i)) * 10.)) / 10.;
-
+  for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) 
+  {
+   // Fetch and round temperature to one decimal
    float temperature = static_cast<float>(static_cast<int>((getControllerConfig().isMetric?sensors.getTempCByIndex(i):sensors.getTempFByIndex(i)) * 10.)) / 10.;
 
  
     // Only send data if temperature has changed and no error
     #if COMPARE_TEMP == 1
-    if (lastTemperature[i] != temperature && temperature != -127.00 && temperature != 85.00) {
+    if (lastTemperature[i] != temperature && temperature != -127.00 && temperature != 85.00) 
+    {
     #else
-    if (temperature != -127.00 && temperature != 85.00) {
+    if (temperature != -127.00 && temperature != 85.00) 
+    {
     #endif
- 
       // Send in the new temperature
       send(msg.setSensor(i).set(temperature,2));
       // Save new temperatures for next compare
