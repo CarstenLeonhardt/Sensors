@@ -46,9 +46,10 @@
 #include <SPI.h>
 #include <MySensors.h>  
 #include <DHT.h>
-
 #include <Wire.h>
 #include <LiquidCrystal_PCF8574.h>
+//#include <DallasTemperature.h>
+//#include <OneWire.h>
 
 LiquidCrystal_PCF8574 lcd(0x27);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
@@ -87,7 +88,7 @@ int mainLoop = MAIN_INTERVAL;
 bool metric = true;
 static int16_t currentLevel = 0;  // Current dim level... //LED
 uint32_t prevMillis;
-
+uint8_t noDht = 0;
 
 #define FADE_DELAY 10  // Delay in ms for each percentage fade up/down (10ms = 1s full-range dim) LED
 
@@ -209,7 +210,7 @@ void fadeToLevel( int toLevel )
 
 void loop()      
 { 
-  if (millis() - prevMillis >= UPDATE_INTERVAL) 
+  if ((millis() - prevMillis >= UPDATE_INTERVAL) && noDht < 50)
   {
     Serial.print("Slow Loop: millis: ");
     Serial.println(prevMillis);
@@ -226,12 +227,14 @@ void loop()
     float temperature = dht.getTemperature();
     if (isnan(temperature)) 
     {
+      noDht++;
       Serial.println("Failed reading temperature from DHT!");
-      lcd.setCursor(0, 1);
-      lcd.print("No DHT reading");
+      //lcd.setCursor(0, 1);
+      //lcd.print("No DHT reading");
     } 
     else if (temperature != lastTemp || nNoUpdatesTemp == FORCE_UPDATE_N_READS) 
     {
+      noDht = 0; //Reset the counter
       // Only send temperature if it changed since the last measurement or if we didn't send an update for n times
       lastTemp = temperature;
       if (!metric) 
@@ -273,12 +276,11 @@ void loop()
       Serial.println(humidity);
       #endif
 
-    lcd.setCursor(0, 1);
-    lcd.print("H:");
-    lcd.print(humidity);
-    lcd.print(" T:");
-    lcd.print(temperature);
-      
+      lcd.setCursor(0, 1);
+      lcd.print("H:");
+      lcd.print(humidity);
+      lcd.print(" T:");
+      lcd.print(temperature);
     } 
     else 
     {
