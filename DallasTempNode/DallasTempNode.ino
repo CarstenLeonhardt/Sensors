@@ -69,6 +69,8 @@ void presentation(){
 
   // Fetch the number of attached temperature sensors  
   numSensors = sensors.getDeviceCount();
+  Serial.print( "Number of DS18b20 found: ");
+  Serial.println(numSensors);
 
   // Present all sensors to controller
   for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) 
