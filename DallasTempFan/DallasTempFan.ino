@@ -39,7 +39,7 @@
 #define GW_ID 0 //Gateway node adr
 
 
-// Pin Assingment
+// Pin Assingment 1
 #define PWM_PIN 3
 //#define TACHO_PIN 2    // Speed feedback
 #define RELAY_PIN 5    // Arduino pin attached to MOSFET Gate pin //analog pwm pin
