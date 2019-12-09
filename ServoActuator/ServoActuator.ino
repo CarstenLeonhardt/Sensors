@@ -43,13 +43,13 @@
 #include <Servo.h>
 
 #define SERVO_DIGITAL_OUT_PIN 3
-#define SERVO_MIN 8 // Fine tune your servos min. 0-180
-#define SERVO_MAX 55 //120  // Fine tune your servos max. 0-180
+#define SERVO_MIN 4//8 // Fine tune your servos min. 0-180
+#define SERVO_MAX 80//55 //120  // Fine tune your servos max. 0-180
 #define DETACH_DELAY 1500 // Tune this to let your movement finish before detaching the servo
 #define CHILD_ID 10   // Id of the sensor child
 #define FADE_DELAY 50//75// 100  // Delay in ms for each percentage fade up/down (10ms = 1s full-range dim) LED
 
-MyMessage msg(CHILD_ID, V_DIMMER);
+MyMessage servoMsg(CHILD_ID, V_DIMMER);
 Servo myservo;  // create servo object to control a servo
 // a maximum of eight servo objects can be created Sensor gw(9,10);
 unsigned long timeOfLastChange = 0;
@@ -131,14 +131,14 @@ void receive(const MyMessage &message)
     Serial.println("Servo UP command");
     //myservo.write(SERVO_MIN);
     fadeToLevel(SERVO_MIN);
-    send(msg.set(100));
+    send(servoMsg.set(100));
   }
   else if (message.type == V_DOWN)
   {
     Serial.println("Servo DOWN command");
     //myservo.write(SERVO_MAX);
     fadeToLevel(SERVO_MAX);
-    send(msg.set(0));
+    send(servoMsg.set(0));
   }
   else if (message.type == V_STOP)
   {
@@ -149,6 +149,3 @@ void receive(const MyMessage &message)
   }
   timeOfLastChange = millis();
 }
-
-
-
