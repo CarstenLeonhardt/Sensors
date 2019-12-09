@@ -35,32 +35,19 @@
 #define MY_DEBUG
 
 // Enable and select radio type attached 
-#define MY_RADIO_NRF24
-//#define MY_RADIO_RFM69
-//#define MY_RS485
+#define MY_RADIO_RF24
 
 //43 Entrance/Hall
 //44 Basement
 //45 desktop
 //49 desktop2
-#define MY_NODE_ID 49 //43 // Sets a static id for a node
+#define MY_NODE_ID 43 // Sets a static id for a node
 
-#define MY_RF24_PA_LEVEL RF24_PA_MAX // Max tx power
+//#define MY_RF24_PA_LEVEL RF24_PA_HIGH // High tx power
+//#define MY_RF24_PA_LEVEL RF24_PA_MAX // Max tx power
 
 #define MY_REPEATER_FEATURE //enable package repeater
 
-//RF-nano board
-//#define MY_RF24_CE_PIN 10 
-//#define MY_RF24_CS_PIN 9
-//#define MY_DEBUG_VERBOSE_RF24
-//#define MY_RF24_DATARATE RF24_250KBPS
-
-//#define MY_RF24_DATARATE RF24_250KBPS //for 250kbs //default for mysensors
-//#define MY_RF24_DATARATE RF24_1MBPS //for 1Mbps
-//#define MY_RF24_DATARATE RF24_2MBPS // for 2Mbps.
-
-
- 
 //#include <SPI.h>
 #include <MySensors.h>  
 #include <DHT.h>
@@ -69,10 +56,8 @@
 // Set this to the pin you connected the DHT's data pin to
 #define DHT_DATA_PIN 3
 
-#define LED_PIN 5      // Arduino pin attached to MOSFET Gate pin //analog pwm pin
-
 //Neopixxel led ring PIN
-#define PIN            6
+#define PIN 6
 
 // Set this offset if the sensor has a permanent small offset to the real temperatures
 #define SENSOR_TEMP_OFFSET 0
@@ -104,7 +89,7 @@ uint8_t nNoUpdatesTemp;
 uint8_t nNoUpdatesHum;
 static int16_t currentLevel = 0;  // Current dim level... //LED
 uint32_t prevMillis;
-unsigned char dataAge = 0;
+uint32_t dataAge = 0;
 unsigned char requestcnt = 0;
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
@@ -113,7 +98,7 @@ int delayval = 150; // delay for half a second
 
 MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
-MyMessage lightMsg(CHILD_ID_LED, V_LIGHT); // LED
+MyMessage lightMsg(CHILD_ID_LED, V_STATUS); // LED
 
 DHT dht;
 
@@ -121,25 +106,33 @@ DHT dht;
 void presentation()  
 { 
   // Send the sketch version information to the gateway
-  sendSketchInfo("TemperatureAndHumidity", "1.1");
-  
+  sendSketchInfo("T_And_H_Kaelder", "1.1");
+  //delay(100);
+  Serial.println("presentation()");
   // Register all sensors to gw (they will be created as child devices)
-  present(CHILD_ID_HUM, S_HUM);
-  present(CHILD_ID_TEMP, S_TEMP);
 
-  present( CHILD_ID_LED, S_LIGHT );
+  Serial.println("S_LIGHT");
+  present( CHILD_ID_LED, S_BINARY,"Neopixel light", false );
+  //delay(100);  
+
+  Serial.println("S_HUM");
+  present(CHILD_ID_HUM, S_HUM,"Humidity", false);
+  //delay(100);
+
+  Serial.println("S_TEMP");
+  present(CHILD_ID_TEMP, S_TEMP,"Temperature", false);
+  //delay(100);
 }
 
 
 void setup()
 { 
-  pinMode(LED_PIN, OUTPUT);       // sets the pin as output 
-  //pinMode(LED_PIN2, OUTPUT);       // sets the pin as output  led2
-  
+  Serial.println("setup()");
   pixels.begin(); // This initializes the NeoPixel library.
   pixels.setBrightness(10); // limit the brightness
-  SetColor(0,0, 155,0);
-  pixels.show(); // turn off all pixels
+  Serial.println("change color");
+  SetColor(204,204,0,0);
+  pixels.show(); // set pixel output
   
   dht.setup(DHT_DATA_PIN); // set data pin of DHT sensor
   if (UPDATE_INTERVAL <= dht.getMinimumSamplingPeriod()) 
@@ -168,27 +161,19 @@ void SetColor(unsigned char r,unsigned char g,unsigned char b, unsigned int dela
 //led
 void receive(const MyMessage &message)
 {
-  if (message.type == V_LIGHT || message.type == V_DIMMER || message.type == V_ARMED)
+      Serial.print("Receive message: ");
+
+  if (message.type == V_STATUS)
   {
     Serial.print("Receive light message: ");
-    if (message.type == V_LIGHT )
-      Serial.println("V_LIGHT");
-    else if( message.type == V_DIMMER)
-      Serial.println("V_DIMMER");
-    else if( message.type == V_ARMED)
-    {
-      Serial.print("V_ARMED int: ");
-      Serial.println(atoi( message.data ));
-      Serial.print("V_ARMED data: ");
-      Serial.println(message.data);
-    }
+    Serial.println("V_STATUS");
 
  
     //  Retrieve the power or dim level from the incoming request message
     int requestedLevel = atoi( message.data );
 
-    // Adjust incoming level if this is a V_LIGHT variable update [0 == off, 1 == on]
-    requestedLevel *= ( message.type == V_LIGHT ? 100 : 1 );
+    // Adjust incoming level if this is a V_STATUS variable update [0 == off, 1 == on]
+    requestedLevel *= ( message.type == V_STATUS ? 100 : 1 );
 
     // Clip incoming level to valid range of 0 to 100
     requestedLevel = requestedLevel > 100 ? 100 : requestedLevel;
@@ -204,7 +189,10 @@ void receive(const MyMessage &message)
         SetColor(155,0,0,delayval);
       else
         SetColor(0, 155,0,delayval);
+      Serial.print(dataAge);
       dataAge = 0; //reset data age counter
+      Serial.print(" :Reset Data age cnt: ");
+      Serial.println(dataAge);
       requestcnt = 0; //reset counter  
     }
   }
@@ -219,35 +207,46 @@ void loop()
 {  
   if (millis() - prevMillis >= UPDATE_INTERVAL) 
   {
-//    Serial.print("Slow Loop: millis: ");
-//    Serial.println(prevMillis);
+    //Serial.print("Slow Loop: millis: ");
+    //Serial.println(prevMillis);
     prevMillis += UPDATE_INTERVAL;
 
     //send heartbeat to controller
     //sendHeatbeat(); //2.3.1
+    Serial.println("send heartbeat to controller");
+    sendHeartbeat();
+    //Serial.println("send light value to controller");
+    //send(lightMsg.set(1,1));
 
+    
     if (requestcnt < 6)
     {
-     requestcnt++; 
+      requestcnt++;
+      Serial.print("Increment requestcnt: ");
+      Serial.println(requestcnt);
     }
     else
     {
-      Serial.println("Request led state--");
+      Serial.println("Request led state: ");
       request( CHILD_ID_LED, V_LIGHT ); //LED
       requestcnt = 0;
     }
+
+ 
      
     dataAge++;
+    Serial.print("Increment Data age cnt: ");
+    Serial.println(dataAge);
     if (dataAge > 10)
     {
-      Serial.println("data tooo old, go blue");
-      SetColor(0,0, 155,0); //set blue color
+      Serial.println("data too old, go blue");
+      //SetColor(0,0, 155,0); //set blue color
     }
-    if (dataAge > 100)
-    {
-       Serial.println("Reset data counter ");
-      dataAge = 10; //protect against overflow
-    }
+    //if (dataAge > 100)
+   // {
+     //  Serial.println("Reset data counter ");
+    //  dataAge = 10; //protect against overflow
+    //}
     
     // Force reading sensor, so it works also after sleep()
     dht.readSensor(true);
