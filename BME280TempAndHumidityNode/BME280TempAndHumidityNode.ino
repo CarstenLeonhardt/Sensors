@@ -28,7 +28,7 @@
 #define MY_RADIO_NRF24
 #define MY_DEBUG    // Enables debug messages in the serial log 
 #define MY_NODE_ID 47// Sets a static id for a node
-#define MY_RF24_PA_LEVEL RF24_PA_MAX // Max tx power
+//#define MY_RF24_PA_LEVEL RF24_PA_MAX // Max tx power
 #define MY_REPEATER_FEATURE //enable package repeater
 
 #include <MySensors.h>
@@ -51,6 +51,7 @@ float lastBaro;
 #define CHILD_ID_HUM  0
 #define CHILD_ID_TEMP 1
 #define CHILD_ID_BARO 2
+
 
 MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
@@ -77,10 +78,10 @@ void setup()
                   Adafruit_BME280::STANDBY_MS_1000);
   // suggested rate is 1/60Hz (1m)
   Serial.println("Send sketch info");
-  sendSketchInfo("BME280 Sensor", "1.0");
-  present(CHILD_ID_BARO, S_BARO);
-  present(CHILD_ID_TEMP, S_TEMP);
-  present(CHILD_ID_HUM, S_HUM);
+  sendSketchInfo("BME280 Sensor", "1.1");
+  present(CHILD_ID_BARO, S_BARO, "Pressure", false);
+  present(CHILD_ID_TEMP, S_TEMP, "Temperature", false);
+  present(CHILD_ID_HUM, S_HUM, "Humidity", false);
   
 }
 
@@ -103,6 +104,8 @@ void resend(MyMessage &msg, int repeats)
       Serial.print("Unable to transmit, retry count: ");
       Serial.println(repeat);
       repeatdelay += 250;
+      Serial.print("Curent repeat delay: ");
+      Serial.println(repeatdelay);
     } 
     repeat++; 
     delay(repeatdelay);
@@ -128,7 +131,8 @@ void loop()
       Serial.print(TEMP);
       Serial.println(" C");
       //send(msgTemp.set(TEMP, 2));
-      resend((msgTemp.set(TEMP, 2)), 10);
+      resend((msgTemp.set(TEMP, 2)), 20);
+      delay(200);
     }
 
     if (lastHum != HUM)
@@ -137,7 +141,8 @@ void loop()
       Serial.print(HUM);
       Serial.println(" %");
       //send(msgHum.set(HUM, 2));
-      resend((msgHum.set(HUM, 2)), 10);
+      resend((msgHum.set(HUM, 2)), 20);
+      delay(200);      
     }
 
     if (lastBaro != BARO)
@@ -146,7 +151,8 @@ void loop()
       Serial.print(BARO);
       Serial.println(" Pa");
       //send(msgPress.set(BARO, 1));
-      resend((msgPress.set(BARO, 1)), 10);
+      resend((msgPress.set(BARO, 1)), 20);
+      delay(200);
     }
   }
 }
