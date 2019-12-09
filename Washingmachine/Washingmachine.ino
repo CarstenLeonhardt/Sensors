@@ -19,6 +19,7 @@
 
 #define CHILD_ID 3
 #define BUTTON_PIN  3  // Arduino Digital I/O pin for vibration sensor
+#define LED_PIN  4  // Arduino Digital I/O pin for LED indicator
 #define SAMPLING_PERIOD 300000 // 5 minutes period. YMMV
 
 int oldValue=-1;
@@ -34,8 +35,9 @@ void setup()
     //begin();
     Serial.println("Setup pins: ");
     // Setup the button
-    pinMode(BUTTON_PIN,INPUT);  
-    
+    pinMode(BUTTON_PIN,INPUT);
+    pinMode(LED_PIN,OUTPUT);
+    digitalWrite(LED_PIN,LOW);  
     // Activate internal pull-up
     digitalWrite(BUTTON_PIN,HIGH);
   
@@ -47,6 +49,10 @@ void report_state(int state)
     Serial.print("reporting state: ");
     Serial.println(state); 
     send(msg.set(state));
+    if (state > 0)
+      digitalWrite(LED_PIN,HIGH);  
+    else
+      digitalWrite(LED_PIN,LOW);  
 }
 
 int prev_state = -1;
@@ -68,6 +74,10 @@ void loop()
   if (millis() - period_start > SAMPLING_PERIOD) 
   {
     period_start = millis();
+    //send heartbeat to controller
+    Serial.println("send heartbeat to controller");
+    sendHeartbeat();
+    
     Serial.print("State: ");
     Serial.println(state);
     if (state != prev_state) 
