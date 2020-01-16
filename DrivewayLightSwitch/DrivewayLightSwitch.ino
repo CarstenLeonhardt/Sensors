@@ -37,7 +37,6 @@
 
 #include <SPI.h>
 #include <MySensors.h>
-#include <Bounce2.h>
 
 #define CHILD_ID_MOMENTARY 3
 #define BUTTON_PIN_MOMENTARY  3  // Arduino Digital I/O pin for button/reed switch
@@ -45,13 +44,11 @@
 #define CHILD_ID_SW 2
 #define BUTTON_PIN_SW 2  // Arduino Digital I/O pin for button/reed switch
 
-Bounce debouncerA = Bounce(); 
-int oldValueA=-1;
-int ValueA = 0;
+uint8_t value1;
+uint8_t value2;
+uint8_t sentValue1=2;
+uint8_t sentValue2=2;
 
-Bounce debouncerB = Bounce(); 
-int oldValueB=-1;
-int ValueB = 0;
 
 MyMessage msgA(CHILD_ID_MOMENTARY, V_TRIPPED);
 MyMessage msgB(CHILD_ID_SW, V_TRIPPED);
@@ -86,25 +83,14 @@ void represent(uint8_t childSensorId, uint8_t sensorType, const char *descriptio
 void setup()  
 {  
   // Setup the button
-  pinMode(BUTTON_PIN_MOMENTARY,INPUT);
-  // Activate internal pull-up
-  digitalWrite(BUTTON_PIN_MOMENTARY,HIGH);
-  
-  // After setting up the button, setup debouncer
-  debouncerA.attach(BUTTON_PIN_MOMENTARY);
-  debouncerA.interval(5);
-  
-  pinMode(BUTTON_PIN_SW,INPUT);
-  digitalWrite(BUTTON_PIN_SW,HIGH);
-  debouncerB.attach(BUTTON_PIN_SW);
-  debouncerB.interval(5);
-  
+  pinMode(BUTTON_PIN_MOMENTARY,INPUT_PULLUP);
+  pinMode(BUTTON_PIN_SW,INPUT_PULLUP);
 }
 
 void presentation() 
 {
 
-  sendSketchInfo("Light Switch Status", "1.0");
+  sendSketchInfo("Light Switch Status", "1.1");
   Serial.println(F("Presentation() "));
   delay(1000);
   // You can use S_DOOR, S_MOTION or S_LIGHT here depending on your usage. 
@@ -145,34 +131,29 @@ void resend(MyMessage &msg, int repeats)
 }
 
 
-int GetPinState(Bounce &debouncer, int &oldValue, MyMessage &msg, int repeats, String pinname, bool Verbose)
-{
-  int value = 0;
-  int retval = oldValue==HIGH ? 0 : 1;
-  debouncer.update();
-  // Get the update value
-  value = debouncer.read();
 
-  if (value != oldValue) 
+uint8_t GetPinValue(uint8_t pin, uint8_t &sentValue, MyMessage &msg, int repeats, String pinname, bool Verbose )
+{
+  uint8_t value;
+  uint8_t retval;
+
+  value = digitalRead(pin);
+
+  retval = value==HIGH ? 0 : 1;
+  if (value != sentValue) 
   {
     if (Verbose)
     {
       Serial.print(F("Pin "));
       Serial.print(pinname);
       Serial.print(F(" state changed, was: "));
-      Serial.print(oldValue);
+      Serial.print(sentValue==LOW);
       Serial.print(F(", is now: "));
-      Serial.print(value);
+      Serial.println(value==LOW);
     }
-    // Send in the new value
-    retval = value==HIGH ? 0 : 1;
-    if (Verbose)
-    {
-      Serial.print(F(" - State is now: "));
-      Serial.println(retval);
-    }
+    // Value has changed from last tranmission, send the updated value
     resend((msg.set(retval)), repeats);
-    oldValue = value;
+    sentValue = value;
   }
   return retval;
 }
@@ -181,8 +162,13 @@ int GetPinState(Bounce &debouncer, int &oldValue, MyMessage &msg, int repeats, S
 //  Check if digital input has changed and send in new value
 void loop() 
 {
-
-   ValueA = GetPinState(debouncerA, oldValueA, msgA, 10, F("Momentary"), true);
-   ValueB = GetPinState(debouncerB, oldValueB, msgB, 10, F("Switch"), true);
-
+  // Short delay to allow buttons to properly settle
+  sleep(5);
+  
+  value1 = GetPinValue(BUTTON_PIN_MOMENTARY, sentValue1, msgA, 10, F("Momentary"), true);
+  value2 = GetPinValue(BUTTON_PIN_SW, sentValue2, msgB, 10, F("Switch"), true);
+  
+  // Sleep until something happens with the sensor
+  Serial.print(F("Going to sleep"));
+  sleep(BUTTON_PIN_MOMENTARY-2, CHANGE, BUTTON_PIN_SW-2, CHANGE, 0);
 } 

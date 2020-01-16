@@ -26,7 +26,7 @@
 //https://www.mysensors.org/download/sensor_api_20
 //v2.1 Anpassung auf API 2.0 von JH
 #define MY_RADIO_NRF24
-#define MY_DEBUG    // Enables debug messages in the serial log 
+//#define MY_DEBUG    // Enables debug messages in the serial log 
 //#define MY_DEBUG_VERBOSE_RF24  //verbose debug
 #define MY_NODE_ID 59//54 // Sets a static id for a node
 #define MY_RF24_PA_LEVEL RF24_PA_MAX // Max tx power
@@ -35,6 +35,7 @@
 #define CHILD_ID_RELAY 0
 #define CHILD_ID_FANSPEED 1
 #define CHILD_ID_TEMP 2 // and onwards
+#define CHILD_ID_TEMP1 3 //
 #define CHILD_ID_TEMPDIFF 4 // temperature difference
 #define GW_ID 0 //Gateway node adr
 
@@ -48,6 +49,8 @@
 #define MAX_ATTACHED_DS18B20 2
 
 #define SLEEP_TIME 3000 //60000;//3000; // Sleep time between reads (in milliseconds)
+
+#define TX_SLEEP_TIME 60000 
 
 #define PWM_DUTY_MAX 79 // PWM output max DUETY value
 #define TEMP_DIFF_FACTOR 10 // Temperature diffence to percentage conversion factor
@@ -71,6 +74,7 @@
 OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 DallasTemperature sensors(&oneWire); // Pass the oneWire reference to Dallas Temperature. 
 uint32_t prevMillis;
+uint32_t prevMillisTx;
 float lastTemperature[MAX_ATTACHED_DS18B20];
 int numSensors=0;
 boolean receivedConfig = false;
@@ -100,29 +104,107 @@ void setup()
 }
 
 
-void presentation()
+int InitOneWireTemp()
 {
   // Startup up the OneWire library
   sensors.begin();
   // requestTemperatures() will not block current thread
   sensors.setWaitForConversion(false);
+
+  // Fetch the number of attached temperature sensors  
+  numSensors = sensors.getDeviceCount();
   
+  return numSensors;
+}
+
+//Retransmit present if it was not acked
+void represent(uint8_t childSensorId, uint8_t sensorType, const char *description, int repeats)
+{
+  int repeat = 1;
+  int repeatdelay = 0;
+  boolean sendOK = false;
+
+  while ((sendOK == false) and (repeat < repeats)) 
+  {
+    if (present(childSensorId, sensorType, description, false)) 
+    {
+      sendOK = true;
+    } 
+    else 
+    {
+      sendOK = false;
+      Serial.print(F("Unable to transmit present(), retry count: "));
+      Serial.println(repeat);
+      repeatdelay += 250;
+    } 
+    repeat++; 
+    delay(repeatdelay);
+  }
+}
+
+//Retransmit message if it was not acked
+void resend(MyMessage &msg, int repeats)
+{
+  int repeat = 1;
+  int repeatdelay = 0;
+  boolean sendOK = false;
+
+  while ((sendOK == false) and (repeat < repeats)) 
+  {
+    if (send(msg)) 
+    {
+      sendOK = true;
+    } 
+    else 
+    {
+      sendOK = false;
+      Serial.print(F("Unable to transmit, retry count: "));
+      Serial.println(repeat);
+      repeatdelay += 250;
+    } 
+    repeat++; 
+    delay(repeatdelay);
+  }
+}
+
+void(* resetFunc) (void) = 0; //declare reset function @ address 0
+void presentation()
+{
+  int sensornumber = 0;
+ 
   // Startup and initialize MySensors library. Set callback for incoming messages. 
   
   // Send the sketch version information to the gateway and Controller
   sendSketchInfo("Temperature controlled Fan", "2.1");
   // Present the Fan Relay On/Off to controller
-
   
   Serial.println( "present( CHILD_ID_RELAY, S_LIGHT );");
-  present( CHILD_ID_RELAY, S_LIGHT );
+  //present( CHILD_ID_RELAY, S_LIGHT );
+  represent(CHILD_ID_RELAY, S_LIGHT, "Relay", 10);
+
 
   Serial.println( "present( CHILD_ID_FANSPEED, S_DIMMER );");
-  present( CHILD_ID_FANSPEED, S_DIMMER );
+  //present( CHILD_ID_FANSPEED, S_DIMMER );
+  represent(CHILD_ID_FANSPEED, S_DIMMER, "FanSpeed", 10);
 
-  // Fetch the number of attached temperature sensors  
-  numSensors = sensors.getDeviceCount();
+  for (int i=0; i< 10; i++)
+  {
+    sensornumber = InitOneWireTemp();
+    //Serial.print(".");
+    if (sensornumber > 1)
+      break;
+    if (i > 5)
+    {
+      Serial.println(" : Unable to init ds18b20, reboot");
+      sleep(500);
+      resetFunc();  //call reset  
+    }
+    
+    sleep(500);
+  }
+    
   Serial.print( "Number of DS18b20 found: ");
+  //Serial.println(sensornumber);
   Serial.println(numSensors);
   // Present all sensors to controller
   for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) 
@@ -130,9 +212,11 @@ void presentation()
     Serial.print( "present(");
     Serial.print(i+CHILD_ID_TEMP);
     Serial.println( ", S_TEMP);");
-     present(numSensors+CHILD_ID_TEMP, S_TEMP);
+    //present(numSensors+CHILD_ID_TEMP, S_TEMP);
+    represent(numSensors+CHILD_ID_TEMP, S_TEMP, "Temp", 10);
   }
   present(CHILD_ID_TEMPDIFF, S_TEMP);
+  represent(CHILD_ID_TEMPDIFF, S_TEMP, "TempDifference", 10);
   Serial.println( "void request Controller Relay state");
   //Request Master Relay state from controller
   request (CHILD_ID_RELAY, V_LIGHT,GW_ID);
@@ -168,23 +252,19 @@ void receive(const MyMessage &message)
   }
 }
 
+enum tempstates
+{
+  temp_none,
+  wait_for_temp,
+  temp_ready
+};
+
+uint8_t tempMeasReady = temp_none;
+
 void loop()     
 {         
   byte duty = 0;
 
-//  relay = RELAY_ON;
-//  digitalWrite(RELAY_PIN,relay); //turn on relay 
-//  float tempdiff1 = abs(21.2 - 19.6);
-//  Serial.print( "Tempdiff: " );
-//  Serial.print( tempdiff1 );  
-//  int pct = (tempdiff1 * TEMP_DIFF_FACTOR);
-//  Serial.print( " - Percentage: " );
-//  Serial.println( pct );  
-//  duty = pctToDuty((unsigned char)pct);
-//  pwmDuty(duty); // range = 0-79 = 1.25-100%)
-//   
-    
-  //Serial.println( "loop" );
   if (millis() - prevMillis >= SLEEP_TIME) 
   {
     //Serial.print("Slow Loop: millis: ");
@@ -193,18 +273,36 @@ void loop()
   
     // Fetch temperatures from Dallas sensors
     sensors.requestTemperatures();
-  
+    tempMeasReady = wait_for_temp;
+  }
+
+
+  // See if new temperature is ready;
+  if (tempMeasReady == wait_for_temp)
+  { 
+    if (sensors.isConversionAvailable(0))
+    {
+      tempMeasReady = temp_ready;
+    }
+  }
+
+
+  if (tempMeasReady == temp_ready)
+  {
+    tempMeasReady = temp_none;// clear the tempratyre
     // Read temperatures and send them to controller 
     for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) 
     {
      // Fetch and round temperature to one decimal
-     float temperature = static_cast<float>(static_cast<int>((getControllerConfig().isMetric?sensors.getTempCByIndex(i):sensors.getTempFByIndex(i)) * 10.)) / 10.;
+     float temperature = static_cast<float>(static_cast<int>((sensors.getTempCByIndex(i)) * 10.)) / 10.;
      
       // Only send data if temperature has changed and no error
-      if (lastTemperature[i] != temperature && temperature != -127.00 && temperature != 85.00) 
+      if ((lastTemperature[i] != temperature ) && (temperature != -127.00) && (temperature != 85.00)) 
       {
         // Send in the new temperature
-        send(msg.setSensor(i).set(temperature,2));
+        //send(msg.setSensor(i).set(temperature,2));
+        //resend(msg.setSensor(i).set(temperature,2), 10);
+        //sleep(100); //wait a bit before next transmission
         // Save new temperatures for next compare
         lastTemperature[i]=temperature;
       }
@@ -219,40 +317,20 @@ void loop()
 
     if (tempdiff > TEMP_DIFF_RELAY_ON) 
     {
-//      Serial.print( "TEMP_DIFF_RELAY_ON: " );
-//      Serial.print("Stoptime: ");
-//      Serial.print(stoptime);
-
       if (stoptime >= STOPTIME)
       {
         stoptime = 0;
         relay = RELAY_ON;
-//        Serial.print( " - stoptime >= STOPTIME");
-//        Serial.println( " - Turn on relay" );
       }
-//      else
-//      {
-//        Serial.println( " - stoptime < STOPTIME");
-//      }
     }
     
     if (tempdiff < TEMP_DIFF_RELAY_OFF)
     {
-//      Serial.print( "TEMP_DIFF_RELAY_OFF: " );
-//      Serial.print(" runtime: ");
-//      Serial.print(runtime);
-
       if (runtime >= RUNTIME) 
       {
         runtime = 0;
         relay = RELAY_OFF;
-//        Serial.print( " - runtime >= RUNTIME");
-//        Serial.println( " - Turn off relay" );
       }
-//      else
-//      {
-//        Serial.println( " - runtime < RUNTIME");
-//      }
     }
 
     if (oldpct != pct)
@@ -262,19 +340,32 @@ void loop()
       Serial.print(tempdiff);
       Serial.print(" - pct: ");
       Serial.print(pct);    
-
-
       Serial.print(" - Stoptime: ");
       Serial.print(stoptime);
       Serial.print(" - Runtime: ");
       Serial.println(runtime);
-      send(fanSpeedMsg.set(pct));   //Send the fanspeed to the controller
-      send(msg.setSensor(CHILD_ID_TEMPDIFF).set(tempdiff,2)); //Send the temperature difference to the controller
       duty = pctToDuty((unsigned char)pct);
       //Set the duty cycle to the fan
       pwmDuty(duty);
     }
-    
+
+    if (millis() - prevMillisTx >= TX_SLEEP_TIME) 
+    {
+      prevMillisTx += TX_SLEEP_TIME;
+      //Serial.println("TX fanspeed");
+      send(fanSpeedMsg.set(pct));   //Send the fanspeed to the controller
+      //resend(fanSpeedMsg.set(pct), 10);
+      //sleep(100); //wait a bit before next transmission
+      //Serial.println("temp diff");
+      send(msg.setSensor(CHILD_ID_TEMPDIFF).set(tempdiff,2)); //Send the temperature difference to the controller
+      //resend(msg.setSensor(CHILD_ID_TEMPDIFF).set(tempdiff,2), 10);
+      //sleep(100); //wait a bit before next transmission
+      //Serial.println("temp1");
+      send(msg.setSensor(CHILD_ID_TEMP).set(lastTemperature[0],2));
+      //sleep(100); //wait a bit before next transmission
+      //Serial.println("temp2");
+      send(msg.setSensor(CHILD_ID_TEMP1).set(lastTemperature[1],2));
+    }
 
     if (relay == RELAY_ON)
     {
@@ -286,16 +377,16 @@ void loop()
     }
   }//SlowLoop End
   
-    // only operate relay if controller allowed it
-    if (controllerRelay == false)
-    {
-      //Serial.println( "Controller blocks relay" );
-      digitalWrite( RELAY_PIN, RELAY_OFF);
-    }
-    else
-    {
-      digitalWrite( RELAY_PIN, relay); //Write to relay 
-    }
+  // only operate relay if controller allowed it
+  if (controllerRelay == false)
+  {
+    //Serial.println( "Controller blocks relay" );
+    digitalWrite( RELAY_PIN, RELAY_OFF);
+  }
+  else
+  {
+    digitalWrite( RELAY_PIN, relay); //Write to relay 
+  }
   //sleep(SLEEP_TIME);
 }
 
@@ -342,11 +433,5 @@ byte pctToDuty(unsigned char pct)
   {
     i = PWM_DUTY_MAX; //Clamp to max value
   }
-    
-//  Serial.print( "pctToDuty pct: " );
-//  Serial.print( pct );
-//  Serial.print( " duty: " );
-//  Serial.println( i );
   return (byte)i;
 }
-
