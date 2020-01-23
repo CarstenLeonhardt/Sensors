@@ -252,6 +252,22 @@ void receive(const MyMessage &message)
   }
 }
 
+
+
+#define k 0.01  // the filter coefficient, 0.1 means a scale of 10 samples, 0.01 would be 100 samples
+/*
+Input: reading; // current value
+Input: average // holding the current filteret value
+
+source: //https://forum.arduino.cc/index.php?topic=439541.0 #6
+*/
+void Average(float reading, float &average)
+{
+  average += k * (reading - average) ;  // simple 1st order digital low pass filter
+  //delay (10) ;    // sample rate set by a delay
+}
+
+
 enum tempstates
 {
   temp_none,
@@ -271,9 +287,12 @@ void loop()
     //Serial.println(prevMillis);
     prevMillis += SLEEP_TIME;
   
-    // Fetch temperatures from Dallas sensors
-    sensors.requestTemperatures();
-    tempMeasReady = wait_for_temp;
+    if (tempMeasReady == temp_none)
+    {
+      // Fetch temperatures from Dallas sensors
+      sensors.requestTemperatures();
+      tempMeasReady = wait_for_temp;
+    }
   }
 
 
@@ -289,7 +308,8 @@ void loop()
 
   if (tempMeasReady == temp_ready)
   {
-    tempMeasReady = temp_none;// clear the tempratyre
+    tempMeasReady = temp_none;// make ready for the next measurement
+
     // Read temperatures and send them to controller 
     for (int i=0; i<numSensors && i<MAX_ATTACHED_DS18B20; i++) 
     {
@@ -297,14 +317,21 @@ void loop()
      float temperature = static_cast<float>(static_cast<int>((sensors.getTempCByIndex(i)) * 10.)) / 10.;
      
       // Only send data if temperature has changed and no error
-      if ((lastTemperature[i] != temperature ) && (temperature != -127.00) && (temperature != 85.00)) 
+      if (/*(lastTemperature[i] != temperature ) && */(temperature != -127.00) && (temperature != 85.00)) 
       {
         // Send in the new temperature
         //send(msg.setSensor(i).set(temperature,2));
         //resend(msg.setSensor(i).set(temperature,2), 10);
         //sleep(100); //wait a bit before next transmission
         // Save new temperatures for next compare
-        lastTemperature[i]=temperature;
+        Serial.print("Temperature read: ");
+        Serial.print(temperature);
+        Serial.print(" - Old filtered temp: ");
+        Serial.print(lastTemperature[i]);
+        Average(temperature, lastTemperature[i]);
+        Serial.print(" - New filtered temp: ");
+        Serial.println(lastTemperature[i]);
+        //lastTemperature[i]=temperature;
       }
     }//forloop end
     
